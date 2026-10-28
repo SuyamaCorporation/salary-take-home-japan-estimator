@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>年収 手取り 試算 日本版</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-4">
+<div class="max-w-3xl mx-auto">
+  <h1 class="text-2xl font-bold mb-4 text-gray-800">年収 手取り 試算（日本版）</h1>
+  <p class="text-sm text-gray-500 mb-4">※ 簡易試算です。実際の税額は異なる場合があります。</p>
+
+  <!-- Input -->
+  <div class="bg-white rounded-lg shadow p-4 mb-4">
+    <h2 class="text-lg font-semibold mb-3 text-gray-700">入力</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div>
+        <label for="grossSalary" class="block text-sm text-gray-600 mb-1">額面年収（万円）</label>
+        <input id="grossSalary" type="number" min="0" max="10000" value="500" class="w-full border rounded px-3 py-2" aria-label="額面年収（万円）">
+      </div>
+      <div>
+        <label for="dependents" class="block text-sm text-gray-600 mb-1">扶養人数</label>
+        <select id="dependents" class="w-full border rounded px-3 py-2" aria-label="扶養人数">
+          <option value="0">0人</option>
+          <option value="1">1人</option>
+          <option value="2">2人</option>
+          <option value="3">3人</option>
+        </select>
+      </div>
+      <div>
+        <label for="insuranceType" class="block text-sm text-gray-600 mb-1">健康保険種別</label>
+        <select id="insuranceType" class="w-full border rounded px-3 py-2" aria-label="健康保険種別">
+          <option value="kyokai">協会けんぽ（約10%）</option>
+          <option value="kumiai">組合健保（約9%）</option>
+          <option value="kokuho">国民健康保険（約8%）</option>
+        </select>
+      </div>
+    </div>
+    <button onclick="calculate()" class="mt-4 bg-blue-600 text-white rounded px-6 py-2 hover:bg-blue-700" aria-label="試算する">試算する</button>
+  </div>
+
+  <!-- Result -->
+  <div id="result" class="hidden">
+    <!-- Main Result -->
+    <div class="bg-white rounded-lg shadow p-4 mb-4">
+      <h2 class="text-lg font-semibold mb-3 text-gray-700">試算結果</h2>
+      <div class="grid grid-cols-2 gap-4">
+        <div class="bg-blue-50 rounded-lg p-4 text-center">
+          <div class="text-sm text-gray-500 mb-1">年間手取り</div>
+          <div id="annualTakeHome" class="text-3xl font-bold text-blue-700"></div>
+        </div>
+        <div class="bg-green-50 rounded-lg p-4 text-center">
+          <div class="text-sm text-gray-500 mb-1">月次手取り</div>
+          <div id="monthlyTakeHome" class="text-3xl font-bold text-green-700"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Breakdown -->
+    <div class="bg-white rounded-lg shadow p-4 mb-4">
+      <h2 class="text-lg font-semibold mb-3 text-gray-700">控除内訳</h2>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="text-left p-2 border-b">項目</th>
+            <th class="text-right p-2 border-b">年額</th>
+            <th class="text-right p-2 border-b">月額</th>
+            <th class="text-right p-2 border-b">税率相当</th>
+          </tr>
+        </thead>
+        <tbody id="breakdownBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Comparison -->
+    <div class="bg-white rounded-lg shadow p-4">
+      <h2 class="text-lg font-semibold mb-3 text-gray-700">扶養人数別 比較表</h2>
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="bg-gray-50">
+            <th class="text-left p-2 border-b">扶養人数</th>
+            <th class="text-right p-2 border-b">年間手取り</th>
+            <th class="text-right p-2 border-b">月次手取り</th>
+            <th class="text-right p-2 border-b">扶養控除効果</th>
+          </tr>
+        </thead>
+        <tbody id="comparisonBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function fmt(n) { return Math.round(n).toLocaleString('ja-JP') + '円'; }
+function fmtMan(n) { return (Math.round(n)/10000).toFixed(1) + '万円'; }
+
+function calcTax(gross, dependents, insuranceType) {
+  const grossYen = gross * 10000;
+
+  // 給与所得控除
+  let kyuyoKoyo;
+  if (grossYen <= 1625000) kyuyoKoyo = 550000;
+  else if (grossYen <= 1800000) kyuyoKoyo = grossYen * 0.4 - 100000;
+  else if (grossYen <= 3600000) kyuyoKoyo = grossYen * 0.3 + 80000;
+  else if (grossYen <= 6600000) kyuyoKoyo = grossYen * 0.2 + 440000;
+  else if (grossYen <= 8500000) kyuyoKoyo = grossYen * 0.1 + 1100000;
+  else kyuyoKoyo = 1950000;
+
+  // 社会保険料
+  const kouseiNenkin = grossYen * 0.0915; // 厚生年金 9.15%
+  const kenkoHoken = insuranceType === 'kyokai' ? grossYen * 0.0499 :
+                     insuranceType === 'kumiai' ? grossYen * 0.045 : grossYen * 0.04;
+  const koyoHoken = grossYen * 0.003; // 雇用保険 0.3%
+  const shakaihoken = kouseiNenkin + kenkoHoken + koyoHoken;
+
+  // 所得控除
+  const kisoCo = 480000; // 基礎控除
+  const fuyoCo = dependents * 380000; // 扶養控除
+  const kyuyoShotoku = grossYen - kyuyoKoyo;
+  const kazeiShotoku = Math.max(0, kyuyoShotoku - shakaihoken - kisoCo - fuyoCo);
+
+  // 所得税（累進）
+  let shotokuZei;
+  if (kazeiShotoku <= 1950000) shotokuZei = kazeiShotoku * 0.05;
+  else if (kazeiShotoku <= 3300000) shotokuZei = kazeiShotoku * 0.1 - 97500;
+  else if (kazeiShotoku <= 6950000) shotokuZei = kazeiShotoku * 0.2 - 427500;
+  else if (kazeiShotoku <= 9000000) shotokuZei = kazeiShotoku * 0.23 - 636000;
+  else if (kazeiShotoku <= 18000000) shotokuZei = kazeiShotoku * 0.33 - 1536000;
+  else if (kazeiShotoku <= 40000000) shotokuZei = kazeiShotoku * 0.4 - 2796000;
+  else shotokuZei = kazeiShotoku * 0.45 - 4796000;
+  shotokuZei = Math.max(0, shotokuZei) * 1.021; // 復興特別所得税
+
+  // 住民税
+  const juminZei = Math.max(0, kazeiShotoku) * 0.1 + 5000;
+
+  const totalDeduction = shakaihoken + shotokuZei + juminZei;
+  const takeHome = grossYen - totalDeduction;
+
+  return {
+    grossYen, takeHome,
+    kouseiNenkin, kenkoHoken, koyoHoken, shakaihoken,
+    shotokuZei, juminZei, totalDeduction,
+    kyuyoKoyo, kazeiShotoku
+  };
+}
+
+function calculate() {
+  const gross = parseFloat(document.getElementById('grossSalary').value) || 0;
+  const dependents = parseInt(document.getElementById('dependents').value) || 0;
+  const insuranceType = document.getElementById('insuranceType').value;
+
+  if (gross <= 0) { alert('額面年収を入力してください'); return; }
+
+  const r = calcTax(gross, dependents, insuranceType);
+
+  document.getElementById('annualTakeHome').textContent = fmtMan(r.takeHome);
+  document.getElementById('monthlyTakeHome').textContent = fmtMan(r.takeHome / 12);
+
+  // Breakdown table
+  const breakdownBody = document.getElementById('breakdownBody');
+  breakdownBody.innerHTML = '';
+  const rows = [
+    ['厚生年金', r.kouseiNenkin, '9.15%'],
+    ['健康保険', r.kenkoHoken, insuranceType === 'kyokai' ? '4.99%' : insuranceType === 'kumiai' ? '4.50%' : '4.00%'],
+    ['雇用保険', r.koyoHoken, '0.30%'],
+    ['所得税（復興税込）', r.shotokuZei, `${(r.shotokuZei/r.grossYen*100).toFixed(1)}%`],
+    ['住民税', r.juminZei, `${(r.juminZei/r.grossYen*100).toFixed(1)}%`],
+  ];
+  rows.forEach(([label, annual, rate]) => {
+    const tr = document.createElement('tr');
+    tr.className = 'border-b';
+    [label, fmt(annual), fmt(annual/12), rate].forEach((v, i) => {
+      const td = document.createElement('td');
+      td.className = 'p-2' + (i > 0 ? ' text-right' : '');
+      td.textContent = v;
+      tr.appendChild(td);
+    });
+    breakdownBody.appendChild(tr);
+  });
+  // Total
+  const trTotal = document.createElement('tr');
+  trTotal.className = 'bg-gray-50 font-semibold';
+  ['合計控除', fmt(r.totalDeduction), fmt(r.totalDeduction/12), `${(r.totalDeduction/r.grossYen*100).toFixed(1)}%`].forEach((v, i) => {
+    const td = document.createElement('td');
+    td.className = 'p-2' + (i > 0 ? ' text-right' : '');
+    td.textContent = v;
+    trTotal.appendChild(td);
+  });
+  breakdownBody.appendChild(trTotal);
+
+  // Comparison
+  const compBody = document.getElementById('comparisonBody');
+  compBody.innerHTML = '';
+  const base = calcTax(gross, 0, insuranceType);
+  for (let dep = 0; dep <= 3; dep++) {
+    const cr = calcTax(gross, dep, insuranceType);
+    const effect = cr.takeHome - base.takeHome;
+    const tr = document.createElement('tr');
+    tr.className = 'border-b' + (dep === dependents ? ' bg-blue-50 font-semibold' : '');
+    [
+      `${dep}人${dep === dependents ? ' ✓' : ''}`,
+      fmtMan(cr.takeHome),
+      fmtMan(cr.takeHome/12),
+      dep === 0 ? '基準' : `+${fmtMan(effect)}`
+    ].forEach((v, i) => {
+      const td = document.createElement('td');
+      td.className = 'p-2' + (i > 0 ? ' text-right' : '');
+      td.textContent = v;
+      tr.appendChild(td);
+    });
+    compBody.appendChild(tr);
+  }
+
+  document.getElementById('result').classList.remove('hidden');
+
+  // Save
+  localStorage.setItem('salary-estimator', JSON.stringify({ gross, dependents, insuranceType }));
+}
+
+// Load saved
+try {
+  const saved = JSON.parse(localStorage.getItem('salary-estimator') || 'null');
+  if (saved) {
+    document.getElementById('grossSalary').value = saved.gross;
+    document.getElementById('dependents').value = saved.dependents;
+    document.getElementById('insuranceType').value = saved.insuranceType;
+    calculate();
+  }
+} catch(e) {}
+</script>
+</body>
+</html>
